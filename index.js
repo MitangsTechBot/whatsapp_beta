@@ -8,22 +8,22 @@ const app = express().use(bodyParser.json());
 
 const token = process.env.TOKEN;
 const mytoken = process.env.MYTOKEN;
-const spreadsheetId = process.env.SPREADSHEET_ID; // Spreadsheet ID
+const spreadsheetId = process.env.SPREADSHEET_ID;
 const credentials = require("./credentials.json"); // Path to your Google Sheets API credentials file
 
 app.listen(process.env.PORT, () => {
   console.log("Webhook is listening");
 });
 
-async function getColumnValues(sheetIndex, columnNumbers) {
+async function getColumnValues(columnNumber) {
   try {
-    const doc = new GoogleSpreadsheet(spreadsheet);
+    const doc = new GoogleSpreadsheet(spreadsheetId);
     await doc.useServiceAccountAuth(credentials);
     await doc.loadInfo();
 
-    const sheet = doc.sheetsByIndex[sheetIndex];
+    const sheet = doc.sheetsByIndex[0]; // Assuming the data is in the first sheet
     const rows = await sheet.getRows();
-    const columnValues = rows.map((row) => columnNumbers.map((columnNumber) => row._rawData[columnNumber - 1]));
+    const columnValues = rows.map((row) => row._rawData[columnNumber - 1]);
 
     return columnValues;
   } catch (error) {
@@ -32,12 +32,13 @@ async function getColumnValues(sheetIndex, columnNumbers) {
   }
 }
 
-const getRowByNumber = async (sheetIndex, rowNumber) => {
+
+const getRowByNumber = async (rowNumber) => {
   const doc = new GoogleSpreadsheet(spreadsheetId);
   await doc.useServiceAccountAuth(credentials);
   await doc.loadInfo();
 
-  const sheet = doc.sheetsByIndex[sheetIndex];
+  const sheet = doc.sheetsByIndex[0]; // Assuming the data is in the first sheet
   const rows = await sheet.getRows();
 
   if (rowNumber <= rows.length) {
@@ -75,7 +76,7 @@ app.post("/webhook", async (req, res) => {
       bodyParam.entry[0].changes[0].value.messages &&
       bodyParam.entry[0].changes[0].value.messages[0]
     ) {
-      const phoneNumberId = 114243355021165
+      const phoneNumberId = 116001314843954
       const from = bodyParam.entry[0].changes[0].value.messages[0].from;
       const msgBody = bodyParam.entry[0].changes[0].value.messages[0].text.body;
 
@@ -83,84 +84,54 @@ app.post("/webhook", async (req, res) => {
       console.log("From: " + from);
       console.log("Message body: " + msgBody);
 
-      // Whitelisted numbers
-      const whitelistNumbers = ["918980802011", "919824288704", "919824499717", "919898214442", "919574999915", "917227922622", "919898638571", "919898243200"]; // Add the whitelisted phone numbers here
+      if (msgBody.toLowerCase() === "hi") {
+        try {
+          const columnNumber = 2; // Set the default column number here
 
-      if (whitelistNumbers.includes(from)) {
-        if (msgBody.toLowerCase() === "hi") {
-          const options = "1. DELL LAPTOPS\n2. DELL AIO + INSPIRON DESKTOP";
-          axios({
-            method: "POST",
-            url: `https://graph.facebook.com/v13.0/${phoneNumberId}/messages?access_token=${token}`,
-            data: {
-              messaging_product: "whatsapp",
-              to: from,
-              text: {
-                body: options,
+          const columnValues = await getColumnValues(columnNumber);
+
+          if (columnValues) {
+            let reply = "Default Column:\n";
+            columnValues.forEach((value, index) => {
+              reply += `${index + 1}. ${value}\n`;
+            });
+
+            axios({
+              method: "POST",
+              url: `https://graph.facebook.com/v13.0/${phoneNumberId}/messages?access_token=${token}`,
+              data: {
+                messaging_product: "whatsapp",
+                to: from,
+                text: {
+                  body: reply,
+                },
               },
-            },
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
+              headers: {
+                "Content-Type": "application/json",
+              },
+            });
 
-          res.sendStatus(200);
-        } else if (msgBody === "1") {
-          try {
-            const sheetIndex = 0; // Index of the first sheet
-            const columnNumbers = [2, 3, 4]; // Set the column numbers you want to fetch here
-
-            const columnValues = await getColumnValues(sheetIndex, columnNumbers);
-
-            if (columnValues) {
-              let reply = "List\n";
-              columnValues.forEach((row, rowIndex) => {
-                reply += `${rowIndex + 1}:\t \t`;
-                row.forEach((column) => {
-                  reply += `${column}\t \t`;
-                });
-                reply += "\n";
-              });
-
-              axios({
-                method: "POST",
-                url: `https://graph.facebook.com/v13.0/${phoneNumberId}/messages?access_token=${token}`,
-                data: {
-                  messaging_product: "whatsapp",
-                  to: from,
-                  text: {
-                    body: reply,
-                  },
-                },
-                headers: {
-                  "Content-Type": "application/json",
-                },
-              });
-
-              res.sendStatus(200);
-            } else {
-              res.sendStatus(500);
-            }
-          } catch (error) {
-            console.error("Error:", error);
+            res.sendStatus(200);
+          } else {
             res.sendStatus(500);
           }
-        } else if (msgBody === "2") {
+        } catch (error) {
+          console.error("Error:", error);
+          res.sendStatus(500);
+        }
+      } else {
+        const selectedRowNumber = parseInt(msgBody);
+        if (!isNaN(selectedRowNumber)) {
           try {
-            const sheetIndex = 1; // Index of the second sheet
-            const columnNumbers = [1, 4, 8]; // Set the column numbers you want to fetch here
+            const selectedRow = await getRowByNumber(selectedRowNumber);
 
-            const columnValues = await getColumnValues(sheetIndex, columnNumbers);
-
-            if (columnValues) {
-              let reply = "List\n";
-              columnValues.forEach((row, rowIndex) => {
-                reply += `${rowIndex + 1}:\t \t`;
-                row.forEach((column) => {
-                  reply += `${column}\t \t`;
-                });
-                reply += "\n";
-              });
+            if (selectedRow) {
+  let reply = "\n";
+  Object.keys(selectedRow).forEach((key) => {
+    if (key !== "_sheet" && key !== "_rowNumber" && key !== "_rawData") {
+      reply += `${key}: ${selectedRow[key]}\n`;
+    }
+  });
 
               axios({
                 method: "POST",
@@ -179,73 +150,15 @@ app.post("/webhook", async (req, res) => {
 
               res.sendStatus(200);
             } else {
-              res.sendStatus(500);
+              res.sendStatus(404);
             }
           } catch (error) {
             console.error("Error:", error);
             res.sendStatus(500);
           }
         } else {
-          const selectedRowNumber = parseInt(msgBody);
-          if (!isNaN(selectedRowNumber)) {
-            try {
-              const sheetIndex = 1; // Index of the first sheet
-
-              const selectedRow = await getRowByNumber(sheetIndex, selectedRowNumber);
-
-              if (selectedRow) {
-                let reply = "\n";
-                Object.keys(selectedRow).forEach((key) => {
-                  if (key !== "_sheet" && key !== "_rowNumber" && key !== "_rawData") {
-                    reply += `${key}: ${selectedRow[key]}\n`;
-                  }
-                });
-
-                axios({
-                  method: "POST",
-                  url: `https://graph.facebook.com/v13.0/${phoneNumberId}/messages?access_token=${token}`,
-                  data: {
-                    messaging_product: "whatsapp",
-                    to: from,
-                    text: {
-                      body: reply,
-                    },
-                  },
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                });
-
-                res.sendStatus(200);
-              } else {
-                res.sendStatus(404);
-              }
-            } catch (error) {
-              console.error("Error:", error);
-              res.sendStatus(500);
-            }
-          } else {
-            res.sendStatus(200);
-          }
+          res.sendStatus(200);
         }
-      } else {
-        // Reply with error message for non-whitelisted numbers
-        axios({
-          method: "POST",
-          url: `https://graph.facebook.com/v13.0/${phoneNumberId}/messages?access_token=${token}`,
-          data: {
-            messaging_product: "whatsapp",
-            to: from,
-            text: {
-              body: "Sorry, you are not authorized to access this service. Contact 9824288704 to get added to the whitelist.",
-            },
-          },
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        res.sendStatus(200);
       }
     } else {
       res.sendStatus(404);
@@ -253,3 +166,6 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
+app.get("/", (req, res) => {
+  res.status(200).send("Hello, this is webhook setup");
+});
