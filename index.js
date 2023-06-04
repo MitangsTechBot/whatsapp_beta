@@ -17,7 +17,7 @@ app.listen(process.env.PORT, () => {
 
 async function getColumnValues(sheetIndex, columnNumbers) {
   try {
-    const doc = new GoogleSpreadsheet(spreadsheetId);
+    const doc = new GoogleSpreadsheet(spreadsheet);
     await doc.useServiceAccountAuth(credentials);
     await doc.loadInfo();
 
@@ -75,7 +75,7 @@ app.post("/webhook", async (req, res) => {
       bodyParam.entry[0].changes[0].value.messages &&
       bodyParam.entry[0].changes[0].value.messages[0]
     ) {
-      const phoneNumberId = bodyParam.entry[0].changes[0].value.metadata.phone_number_id;
+      const phoneNumberId = 114243355021165
       const from = bodyParam.entry[0].changes[0].value.messages[0].from;
       const msgBody = bodyParam.entry[0].changes[0].value.messages[0].text.body;
 
